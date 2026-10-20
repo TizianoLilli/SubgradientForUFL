@@ -1,95 +1,369 @@
+import csv
+
 import gurobipy as gp
+import time
+
+
+def build_model(time_limit):
+    # creazione del modello UFL; formulazione debole
+    model = gp.Model()
+    model.Params.OutputFlag = 0
+    model.Params.TimeLimit = time_limit
+
+    return model
+
 
 class Solver:
-    def __init__(self, facilities, clients, opening_cost, service_cost):
+    def __init__(self, n_clients, facilities, clients, opening_cost, service_cost):
 
         # Dati del problema
+        self.n_clients = n_clients
         self.facilities = facilities
         self.clients = clients
         self.opening_cost = opening_cost
         self.service_cost = service_cost
 
-        # Modello e variabili
-        self.model = None
-        self.x = None
-        self.y = None
+    @staticmethod
+    def _model_result(model, elapsed):
+        result = {
+            "status": int(model.Status),
+            "runtime": elapsed,
+            "objective": None,
+            "bound": None,
+            "gap_solver": None,
+        }
 
-    def setup(self):
-        # creazione del modello
-        self.model = gp.Model()
+        if model.SolCount > 0:
+            result["objective"] = float(model.ObjVal)
 
-    def solve_pli(self):
-        self.setup()
+            if model.IsMIP:
+                try:
+                    result["gap_solver"] = float(model.MIPGap)
+                except (gp.GurobiError, AttributeError):
+                    pass
+
+        return result
+
+    def solve_pli(self, time_limit):
+        start = time.perf_counter()
+        model = build_model(time_limit)
+
         # creazione delle variabili
-        self.x = self.model.addVars(self.facilities, vtype=gp.GRB.BINARY, name="x")
-        self.y = self.model.addVars(self.facilities, self.clients, vtype=gp.GRB.BINARY, name="y")
-        self.solve()
+        x = model.addVars(self.facilities, vtype=gp.GRB.BINARY, name="x")
+        y = model.addVars(self.facilities, self.clients, vtype=gp.GRB.BINARY, name="y")
+        return self.solve(model, x, y, start)
 
-    def solve_pl(self):
+    def solve_rc(self, time_limit):
+        start = time.perf_counter()
+        model = build_model(time_limit)
 
-        self.setup()
         # creazione delle variabili
-        self.x = self.model.addVars(self.facilities, lb = 0, ub = 1, vtype=gp.GRB.CONTINUOUS, name="x")
-        self.y = self.model.addVars(self.facilities, self.clients, lb = 0, ub = 1, vtype=gp.GRB.CONTINUOUS, name="y")
-        self.solve()
+        x = model.addVars(self.facilities, lb = 0, ub = 1, vtype=gp.GRB.CONTINUOUS, name="x")
+        y = model.addVars(self.facilities, self.clients, lb = 0, ub = 1, vtype=gp.GRB.CONTINUOUS, name="y")
+        return self.solve(model, x, y, start)
 
-    def solve(self):
-
+    def solve(self, model, x, y, start):
         # creazione dei vincoli
-        self.model.addConstrs((self.y.sum('*', c) == 1 for c in self.clients), name="service")
-        self.model.addConstrs((self.y[f, c] <= self.x[f] for c in self.clients for f in self.facilities), name="opening")
+        model.addConstrs((y.sum('*', c) == 1 for c in self.clients), name="service")
+        model.addConstrs((y.sum(f, '*') <= self.n_clients * x[f] for f in self.facilities), name="opening")
 
         # creazione della funzione obiettivo
-        of = gp.quicksum(self.x[f] * self.opening_cost[f] for f in self.facilities)
-        of += gp.quicksum(self.y[f, c] * self.service_cost[(f, c)] for c in self.clients for f in self.facilities)
-        self.model.setObjective(of, gp.GRB.MINIMIZE)
-
-        # scrittura della formulazione su un file
-        self.model.write("ufl.lp")
+        of = gp.quicksum(x[f] * self.opening_cost[f] for f in self.facilities)
+        of += gp.quicksum(y[f, c] * self.service_cost[(f, c)] for c in self.clients for f in self.facilities)
+        model.setObjective(of, gp.GRB.MINIMIZE)
 
         # lettura del numero di variabili e vincoli
-        num_vars = self.model.numVars
-        num_constrs = self.model.numConstrs
+        num_vars = model.numVars
+        num_constrs = model.numConstrs
         print(f"Problem has {num_vars} variables and {num_constrs} constraints\n")
 
-        # configurazione di alcuni parametri del solver.
-        self.model.params.TimeLimit = 120
-        self.model.params.MIPGap = 0.001
-
         # risoluzione del problema
-        self.model.optimize()
+        model.optimize()
 
-        # accesso allo status (motivo dell'arresto dell'algoritmo)
-        status = self.model.Status
+        result = self._model_result(
+            model, time.perf_counter() - start
+        )
 
-        if status == gp.GRB.TIME_LIMIT:
-            print("Time limit exceeded!")
-
-        # se sono state trovate soluzioni ammissibili
-        if self.model.SolCount > 0:
-            # lettura del costo della soluzione ottima
-            print("Solution cost:", self.model.ObjVal)
-            print("Running time:", round(self.model.Runtime, 3))
-
-            if self.model.IsMIP:
-                print("Nodes:", int(self.model.NodeCount))
-
-            self.print_solution()
+        if model.SolCount > 0:
+            result["open_facilities"] = [
+                i for i in self.facilities if x[i].X > 0.5
+            ]
         else:
-            print("No feasible solution available.")
-            print("Status code:", status)
+            result["open_facilities"] = None
 
-    def print_solution(self):
+        # rilascio delle risorse per prevenire memory leak
+        model.dispose()
 
-        # stampa delle facility aperte
-        print("Open facilities:")
-        for f in self.facilities:
-            # print(self.x[f].x)
-            # accesso al valore contenuto in x[f]
-            if self.x[f].x > 0.5:
-                n_clients = 0
+        return result
+
+    @staticmethod
+    def _step(q, norm2, upper_bound, k, alpha0):
+        # utilizzo uno stepsize di Polyak se è disponibile un upper bound
+        if norm2 <= 1e-12:
+            return 0.0
+
+        if upper_bound is not None and upper_bound > q:
+            return (upper_bound - q) / norm2
+
+        return alpha0 / (k + 1)
+
+    def lagrangian_opening(self, upper_bound=None, time_limit=300, alpha0=1.0, tol=1e-7):
+        # rilassamento dei vincoli di coerenza: mu è maggiore o uguale di 0
+        start = time.perf_counter()
+
+        # inizializzazione di un dizionario con |n_facilities| elementi con valore 0.0
+        mu = {f: 0.0 for f in self.facilities}
+        best_lb = float("-inf")
+        best_iter = 0
+        stop_reason = None
+        trace = []
+
+        k = 0
+        elapsed = 0
+
+        while elapsed < time_limit:
+            x_hat = {
+                # la tolleranza tol evita di trattare piccoli valori numerici negativi come se fossero significativi
+                f: int(self.opening_cost[f] - self.n_clients * mu[f] < -tol)
+                for f in self.facilities
+            }
+
+            assigned = {f: 0 for f in self.facilities}
+
+            # per ogni client si cerca la facility con costo di allocazione minore
+            for c in self.clients:
+                f_best = min(
+                    self.facilities,
+                    # tra tutte le facility si cerca quella che minimizza la seguente somma
+                    key=lambda f: self.service_cost[f, c] + mu[f]
+                )
+                # viene incrementato il numero di client che attingono a una specifica facility
+                assigned[f_best] += 1
+
+            q = sum(
+                min(0.0, self.opening_cost[f] - self.n_clients * mu[f])
+                for f in self.facilities
+            )
+            q += sum(
+                min(self.service_cost[f, c] + mu[f] for f in self.facilities)
+                for c in self.clients
+            )
+
+            # memorizzazione del miglior bound
+            if q > best_lb:
+                best_lb = q
+                best_iter = k + 1
+
+            # calcolo del subgradiente
+            subgrad = {
+                f: assigned[f] - self.n_clients * x_hat[f]
+                for f in self.facilities
+            }
+            # ricavo della norma al quadrato per calcolare alpha
+            norm2 = sum(v * v for v in subgrad.values())
+
+            trace.append({
+                "iteration": k + 1,
+                "dual_value": q,
+                "best_lb": best_lb,
+                "subgradient_norm": norm2 ** 0.5,
+            })
+
+            # corrisponde a vedere se norm2 == 0, ovvero non c'è una direzione d'aggiornamento
+            if norm2 <= tol * tol:
+                stop_reason = "zero_subgradient"
+                break
+
+            alpha = self._step(
+                q, norm2, upper_bound, k, alpha0
+            )
+
+            # passo piccolo indica aggiornamenti trascurabili
+            if alpha <= tol:
+                stop_reason = "small_step"
+                break
+
+            for f in self.facilities:
+                mu[f] = max(0.0, mu[f] + alpha * subgrad[f])
+
+            k = k + 1
+            elapsed = time.perf_counter() - start
+
+            if elapsed >= time_limit:
+                stop_reason = "time_limit"
+
+        return {
+            "method": "LR_opening",
+            "best_lb": best_lb,
+            "best_iteration": best_iter,
+            "iterations": len(trace),
+            "runtime": time.perf_counter() - start,
+            "multipliers": mu,
+            "trace": trace,
+            "stop_reason": stop_reason,
+        }
+
+    def lagrangian_service(self, upper_bound=None, time_limit=300, alpha0=1.0, tol=1e-7):
+        # rilassamento dei vincoli di domanda; lambda è libero
+        start = time.perf_counter()
+
+        lam = {j: 0.0 for j in self.clients}
+        best_lb = float("-inf")
+        best_iter = 0
+        stop_reason = None
+        trace = []
+
+        k = 0
+        elapsed = 0
+
+        while elapsed < time_limit:
+            reduced = {
+                (f, c): self.service_cost[f, c] - lam[c]
+                for f in self.facilities for c in self.clients
+            }
+
+            x_hat = {}
+            y_hat = {}
+
+            for f in self.facilities:
+                value = self.opening_cost[f] + sum(
+                    min(0.0, reduced[f, c]) for c in self.clients
+                )
+
+                x_hat[f] = int(value < -tol)
+
                 for c in self.clients:
-                    # print(self.y[f, c].x)
-                    if self.y[f, c].x > 0.5:
-                        n_clients += 1
-                print(f'\t - {f}, with {n_clients} clients')
+                    # vincolo: y == 1 solo se x == 1 e reduced è negativo
+                    y_hat[f, c] = int(
+                        x_hat[f] == 1 and reduced[f, c] < -tol
+                    )
+
+            q = sum(lam.values())
+            q += sum(
+                min(
+                    0.0,
+                    self.opening_cost[f] + sum(
+                        min(0.0, reduced[f, c])
+                        for c in self.clients
+                    )
+                )
+                for f in self.facilities
+            )
+
+            if q > best_lb:
+                best_lb = q
+                best_iter = k + 1
+
+            # calcolo del subgradiente
+            subgrad = {
+                c: 1 - sum(y_hat[f, c] for f in self.facilities)
+                for c in self.clients
+            }
+            # ricavo della norma al quadrato per calcolare alpha
+            norm2 = sum(v * v for v in subgrad.values())
+
+            trace.append({
+                "iteration": k + 1,
+                "dual_value": q,
+                "best_lb": best_lb,
+                "subgradient_norm": norm2 ** 0.5,
+            })
+
+            # corrisponde a vedere se norm2 == 0, ovvero non c'è una direzione d'aggiornamento
+            if norm2 <= tol * tol:
+                stop_reason = "zero_subgradient"
+                break
+
+            alpha = self._step(
+                q, norm2, upper_bound, k, alpha0
+            )
+
+            # passo piccolo indica aggiornamenti trascurabili
+            if alpha <= tol:
+                stop_reason = "small_step"
+                break
+
+            for c in self.clients:
+                # non si fa il max tra questo valore e 0 perché lam è una variabile libera
+                lam[c] += alpha * subgrad[c]
+
+            k = k + 1
+            elapsed = time.perf_counter() - start
+
+            if elapsed >= time_limit:
+                stop_reason = "time_limit"
+
+        return {
+            "method": "LR_demand",
+            "best_lb": best_lb,
+            "best_iteration": best_iter,
+            "iterations": len(trace),
+            "runtime": time.perf_counter() - start,
+            "multipliers": lam,
+            "trace": trace,
+            "stop_reason": stop_reason,
+        }
+
+def compare_instance(n_clients, facilities, clients, opening_cost, service_cost, time_limit=300):
+    solver_pli = Solver(n_clients, facilities, clients, opening_cost, service_cost)
+    solver_pl = Solver(n_clients, facilities, clients, opening_cost, service_cost)
+    solver_lr = Solver(n_clients, facilities, clients, opening_cost, service_cost)
+
+    pli = solver_pli.solve_pli(time_limit)
+    rc = solver_pl.solve_rc(time_limit)
+
+    # Incumbent PLI: upper bound ammissibile se disponibile.
+    ub = pli["objective"]
+
+    lr_service = solver_lr.lagrangian_service(upper_bound=ub, time_limit=time_limit)
+    lr_opening = solver_lr.lagrangian_opening(upper_bound=ub, time_limit=time_limit)
+
+    summary = {
+            "n_facilities": len(facilities),
+            "n_clients": len(clients),
+            "PLI_obj": pli["objective"],
+            "PLI_bound": pli["bound"],
+            "PLI_status": pli["status"],
+            "PLI_time": pli["runtime"],
+            "PLI_gap_solver": pli["gap_solver"],
+            "RC_obj": rc["objective"],
+            "RC_time": rc["runtime"],
+            "LR_demand_LB": lr_service["best_lb"],
+            "LR_demand_status": lr_service["stop_reason"],
+            "LR_demand_time": lr_service["runtime"],
+            "LR_demand_iter": lr_service["iterations"],
+            "LR_linking_LB": lr_opening["best_lb"],
+            "LR_linking_status": lr_opening["stop_reason"],
+            "LR_linking_time": lr_opening["runtime"],
+            "LR_linking_iter": lr_opening["iterations"],
+    }
+
+    for name, lb in [
+            ("RC", rc["objective"]),
+            ("LR_demand", lr_service["best_lb"]),
+            ("LR_linking", lr_opening["best_lb"]),
+    ]:
+        if ub is not None and lb is not None and abs(ub) > 1e-10:
+            summary[name + "_gap_percent"] = (
+                    100.0 * (ub - lb) / abs(ub)
+            )
+        else:
+            summary[name + "_gap_percent"] = None
+
+    return {
+            "summary": summary,
+            "pli": pli,
+            "rc": rc,
+            "lr_demand": lr_service,
+            "lr_linking": lr_opening,
+    }
+
+
+def save_summaries_csv(rows, filename="ufl_results.csv"):
+    if not rows:
+        return
+
+    with open(filename, "w", newline="", encoding="utf-8") as file:
+        writer = csv.DictWriter(file, fieldnames=rows[0].keys())
+        writer.writeheader()
+        writer.writerows(rows)

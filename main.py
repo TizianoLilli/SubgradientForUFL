@@ -1,4 +1,4 @@
-from solver import Solver
+from solver import compare_instance
 
 def main():
 
@@ -9,7 +9,7 @@ def main():
     # *service_cost* è un dizionario indicizzato su clients e facilities
 
     # vedi la struttura dei data file contenenti le istanze in data/Readme.txt
-    with open('data/capa1') as file:
+    with open('data/cap61') as file:
         lines = [line.split() for line in file]
 
     # numero di facility location potenziali e clienti
@@ -43,11 +43,20 @@ def main():
     print('Clients:', len(clients))
     print()
 
-    pli = Solver(facilities, clients, opening_cost, service_cost)
-    pli.solve_pli()
+    result = compare_instance(
+        n_clients=n_clients,
+        facilities=facilities,
+        clients=clients,
+        opening_cost=opening_cost,
+        service_cost=service_cost,
+        time_limit=300
+    )
 
-    pl = Solver(facilities, clients, opening_cost, service_cost)
-    pl.solve_pl()
+    print("\n--- CONFRONTO ---")
+    for name, value in result["summary"].items():
+        print(f"{name}: {value}")
+
+    print("\nMiglior LB rilassamento domanda:", result["lr_demand"]["best_lb"])
 
 if __name__ == '__main__':
     main()

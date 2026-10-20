@@ -20,9 +20,25 @@ class Solver:
         return model
 
     @staticmethod
+    def _status_string(status):
+        status_names = {
+            gp.GRB.OPTIMAL: "optimal",
+            gp.GRB.INFEASIBLE: "infeasible",
+            gp.GRB.UNBOUNDED: "unbounded",
+            gp.GRB.INF_OR_UNBD: "infeasible_or_unbounded",
+            gp.GRB.TIME_LIMIT: "time_limit",
+            gp.GRB.ITERATION_LIMIT: "iteration_limit",
+            gp.GRB.NODE_LIMIT: "node_limit",
+            gp.GRB.SOLUTION_LIMIT: "solution_limit",
+            gp.GRB.INTERRUPTED: "interrupted",
+            gp.GRB.SUBOPTIMAL: "suboptimal",
+        }
+        return status_names.get(status, f"other_status_{status}")
+
+    @staticmethod
     def _model_result(model, elapsed):
         result = {
-            "status": int(model.Status),
+            "status": Solver._status_string(model.Status),
             "runtime": elapsed,
             "objective": None,
             "bound": None,

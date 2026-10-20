@@ -1,8 +1,10 @@
 import sys
-from compare import compare_instance
+from compare import compare_instance, save_summaries_csv
+
 
 def main():
 
+    # se l'utente non specifica il tempo max di run per il programma, questo si arresta dopo 120 sec
     if len(sys.argv) > 1:
         time_limit = int(sys.argv[1])
     else:
@@ -58,7 +60,7 @@ def main():
         time_limit=time_limit
     )
 
-    target = {"n_clients", "PLI_gap_solver", "RC_time", "LR_demand_iter"}
+    target = {"n_clients", "PLI_gap_solver", "RC_time", "LR_demand_iter", "LR_linking_iter"}
 
     print("\n--- CONFRONTO ---")
     for name, value in result["summary"].items():

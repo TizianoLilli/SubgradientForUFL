@@ -1,17 +1,5 @@
-import csv
-
 import gurobipy as gp
 import time
-
-
-def build_model(time_limit):
-    # creazione del modello UFL; formulazione debole
-    model = gp.Model()
-    model.Params.OutputFlag = 0
-    model.Params.TimeLimit = time_limit
-
-    return model
-
 
 class Solver:
     def __init__(self, n_clients, facilities, clients, opening_cost, service_cost):
@@ -22,6 +10,14 @@ class Solver:
         self.clients = clients
         self.opening_cost = opening_cost
         self.service_cost = service_cost
+
+    def _build_model(self, time_limit):
+        # creazione del modello UFL; formulazione debole
+        model = gp.Model()
+        model.Params.OutputFlag = 0
+        model.Params.TimeLimit = time_limit
+
+        return model
 
     @staticmethod
     def _model_result(model, elapsed):
@@ -46,23 +42,23 @@ class Solver:
 
     def solve_pli(self, time_limit):
         start = time.perf_counter()
-        model = build_model(time_limit)
+        model = self._build_model(time_limit)
 
         # creazione delle variabili
         x = model.addVars(self.facilities, vtype=gp.GRB.BINARY, name="x")
         y = model.addVars(self.facilities, self.clients, vtype=gp.GRB.BINARY, name="y")
-        return self.solve(model, x, y, start)
+        return self._solve(model, x, y, start)
 
     def solve_rc(self, time_limit):
         start = time.perf_counter()
-        model = build_model(time_limit)
+        model = self._build_model(time_limit)
 
         # creazione delle variabili
         x = model.addVars(self.facilities, lb = 0, ub = 1, vtype=gp.GRB.CONTINUOUS, name="x")
         y = model.addVars(self.facilities, self.clients, lb = 0, ub = 1, vtype=gp.GRB.CONTINUOUS, name="y")
-        return self.solve(model, x, y, start)
+        return self._solve(model, x, y, start)
 
-    def solve(self, model, x, y, start):
+    def _solve(self, model, x, y, start):
         # creazione dei vincoli
         model.addConstrs((y.sum('*', c) == 1 for c in self.clients), name="service")
         model.addConstrs((y.sum(f, '*') <= self.n_clients * x[f] for f in self.facilities), name="opening")
@@ -303,67 +299,3 @@ class Solver:
             "trace": trace,
             "stop_reason": stop_reason,
         }
-
-def compare_instance(n_clients, facilities, clients, opening_cost, service_cost, time_limit=300):
-    solver_pli = Solver(n_clients, facilities, clients, opening_cost, service_cost)
-    solver_pl = Solver(n_clients, facilities, clients, opening_cost, service_cost)
-    solver_lr = Solver(n_clients, facilities, clients, opening_cost, service_cost)
-
-    pli = solver_pli.solve_pli(time_limit)
-    rc = solver_pl.solve_rc(time_limit)
-
-    # Incumbent PLI: upper bound ammissibile se disponibile.
-    ub = pli["objective"]
-
-    lr_service = solver_lr.lagrangian_service(upper_bound=ub, time_limit=time_limit)
-    lr_opening = solver_lr.lagrangian_opening(upper_bound=ub, time_limit=time_limit)
-
-    summary = {
-            "n_facilities": len(facilities),
-            "n_clients": len(clients),
-            "PLI_obj": pli["objective"],
-            "PLI_bound": pli["bound"],
-            "PLI_status": pli["status"],
-            "PLI_time": pli["runtime"],
-            "PLI_gap_solver": pli["gap_solver"],
-            "RC_obj": rc["objective"],
-            "RC_time": rc["runtime"],
-            "LR_demand_LB": lr_service["best_lb"],
-            "LR_demand_status": lr_service["stop_reason"],
-            "LR_demand_time": lr_service["runtime"],
-            "LR_demand_iter": lr_service["iterations"],
-            "LR_linking_LB": lr_opening["best_lb"],
-            "LR_linking_status": lr_opening["stop_reason"],
-            "LR_linking_time": lr_opening["runtime"],
-            "LR_linking_iter": lr_opening["iterations"],
-    }
-
-    for name, lb in [
-            ("RC", rc["objective"]),
-            ("LR_demand", lr_service["best_lb"]),
-            ("LR_linking", lr_opening["best_lb"]),
-    ]:
-        if ub is not None and lb is not None and abs(ub) > 1e-10:
-            summary[name + "_gap_percent"] = (
-                    100.0 * (ub - lb) / abs(ub)
-            )
-        else:
-            summary[name + "_gap_percent"] = None
-
-    return {
-            "summary": summary,
-            "pli": pli,
-            "rc": rc,
-            "lr_demand": lr_service,
-            "lr_linking": lr_opening,
-    }
-
-
-def save_summaries_csv(rows, filename="ufl_results.csv"):
-    if not rows:
-        return
-
-    with open(filename, "w", newline="", encoding="utf-8") as file:
-        writer = csv.DictWriter(file, fieldnames=rows[0].keys())
-        writer.writeheader()
-        writer.writerows(rows)

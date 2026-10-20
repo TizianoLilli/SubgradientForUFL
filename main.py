@@ -1,6 +1,12 @@
-from solver import compare_instance
+import sys
+from compare import compare_instance
 
 def main():
+
+    if len(sys.argv) > 1:
+        time_limit = int(sys.argv[1])
+    else:
+        time_limit = 120
 
     # costruzione delle strutture dati che contengono i dati del problema
     # *facilities* è una lista di lunghezza m
@@ -49,12 +55,16 @@ def main():
         clients=clients,
         opening_cost=opening_cost,
         service_cost=service_cost,
-        time_limit=300
+        time_limit=time_limit
     )
+
+    target = {"n_clients", "PLI_gap_solver", "RC_time", "LR_demand_iter"}
 
     print("\n--- CONFRONTO ---")
     for name, value in result["summary"].items():
         print(f"{name}: {value}")
+        if name in target:
+            print()
 
     print("\nMiglior LB rilassamento domanda:", result["lr_demand"]["best_lb"])
 

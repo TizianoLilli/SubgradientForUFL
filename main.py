@@ -1,5 +1,7 @@
 import sys
-from compare import compare_instance, save_summaries_csv
+from pathlib import Path
+
+from compare import compare_instance, _to_csv
 
 
 def main():
@@ -10,65 +12,67 @@ def main():
     else:
         time_limit = 120
 
-    # costruzione delle strutture dati che contengono i dati del problema
-    # *facilities* è una lista di lunghezza m
-    # *clients* è una lista di lunghezza n
-    # *opening_cost* è un dizionario indicizzato su facilities
-    # *service_cost* è un dizionario indicizzato su clients e facilities
+    # accesso alla directory contenente le istanze del problema
+    directory_data = Path("data")
+    files = [fl for fl in directory_data.iterdir() if fl.is_file()]
 
-    # vedi la struttura dei data file contenenti le istanze in data/Readme.txt
-    with open('data/cap61') as file:
-        lines = [line.split() for line in file]
+    instance_index = 1
 
-    # numero di facility location potenziali e clienti
-    n_facilities = int(lines[0][0])
-    n_clients = int(lines[0][1])
+    for file in files:
+        # vedi la struttura dei data file contenenti le istanze in data/Readme.txt
+        with open(file) as fl:
+            lines = [line.split() for line in fl]
 
-    facilities = list(range(1, n_facilities + 1))
-    clients = list(range(1, n_clients + 1))
+        # costruzione delle strutture dati che contengono i dati del problema
+        # *facilities* è una lista di lunghezza m
+        # *clients* è una lista di lunghezza n
+        # *opening_cost* è un dizionario indicizzato su facilities
+        # *service_cost* è un dizionario indicizzato su clients e facilities
 
-    # costi di setup
-    opening_cost = {
-        f: float(lines[f][1])
-        for f in facilities
-    }
+        # numero di facility location potenziali e clienti
+        n_facilities = int(lines[0][0])
+        n_clients = int(lines[0][1])
 
-    cost_start = n_facilities + 2
+        facilities = list(range(1, n_facilities + 1))
+        clients = list(range(1, n_clients + 1))
 
-    cost_values = [
-     float(value)
-        for line in lines[cost_start:]
-        for value in line
-    ]
+        # costi di setup
+        opening_cost = {
+            f: float(lines[f][1])
+            for f in facilities
+        }
 
-    service_cost = {
-        (f, c): cost_values[(f - 1) * n_clients + (c - 1)]
-        for f in facilities
-        for c in clients
-    }
+        cost_start = n_facilities + 2
 
-    print('Facilities:', len(facilities))
-    print('Clients:', len(clients))
-    print()
+        cost_values = [
+            float(value)
+            for line in lines[cost_start:]
+            for value in line
+        ]
 
-    result = compare_instance(
-        n_clients=n_clients,
-        facilities=facilities,
-        clients=clients,
-        opening_cost=opening_cost,
-        service_cost=service_cost,
-        time_limit=time_limit
-    )
+        service_cost = {
+            (f, c): cost_values[(f - 1) * n_clients + (c - 1)]
+            for f in facilities
+            for c in clients
+        }
 
-    target = {"n_clients", "PLI_gap_solver", "RC_time", "LR_demand_iter", "LR_linking_iter"}
+        print('Facilities:', len(facilities))
+        print('Clients:', len(clients))
+        print()
 
-    print("\n--- CONFRONTO ---")
-    for name, value in result["summary"].items():
-        print(f"{name}: {value}")
-        if name in target:
-            print()
+        result = compare_instance(
+            n_clients=n_clients,
+            facilities=facilities,
+            clients=clients,
+            opening_cost=opening_cost,
+            service_cost=service_cost,
+            time_limit=time_limit
+        )
 
-    print("\nMiglior LB rilassamento domanda:", result["lr_demand"]["best_lb"])
+        print("--- CONFRONTO ---\n")
+        _to_csv(result, instance_name = instance_index)
+
+        instance_index += 1
 
 if __name__ == '__main__':
     main()

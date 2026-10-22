@@ -41,18 +41,10 @@ class Solver:
             "status": Solver._status_string(model.Status),
             "runtime": elapsed,
             "objective": None,
-            "bound": None,
-            "gap_solver": None,
         }
 
         if model.SolCount > 0:
             result["objective"] = float(model.ObjVal)
-
-            if model.IsMIP:
-                try:
-                    result["gap_solver"] = float(model.MIPGap)
-                except (gp.GurobiError, AttributeError):
-                    pass
 
         return result
 
@@ -98,7 +90,7 @@ class Solver:
 
         if model.SolCount > 0:
             result["open_facilities"] = [
-                i for i in self.facilities if x[i].X > 0.5
+                f for f in self.facilities if x[f].X > 0.5
             ]
         else:
             result["open_facilities"] = None

@@ -1,4 +1,6 @@
-import csv
+from pathlib import Path
+
+import pandas as pd
 from solver import Solver
 
 def compare_instance(n_clients, facilities, clients, opening_cost, service_cost, time_limit=300):
@@ -7,7 +9,7 @@ def compare_instance(n_clients, facilities, clients, opening_cost, service_cost,
     pli = solver.solve_pli(time_limit)
     rc = solver.solve_rc(time_limit)
 
-    # Incumbent PLI: upper bound ammissibile se disponibile.
+    # upper bound ammissibile se disponibile
     ub = pli["objective"]
 
     lr_service = solver.lagrangian_service(upper_bound=ub, time_limit=time_limit)
@@ -17,11 +19,10 @@ def compare_instance(n_clients, facilities, clients, opening_cost, service_cost,
         "n_facilities": len(facilities),
         "n_clients": len(clients),
         "PLI_obj": pli["objective"],
-        "PLI_bound": pli["bound"],
         "PLI_status": pli["status"],
         "PLI_time": pli["runtime"],
-        "PLI_gap_solver": pli["gap_solver"],
         "RC_obj": rc["objective"],
+        "RC_status": rc["status"],
         "RC_time": rc["runtime"],
         "LR_demand_LB": lr_service["best_lb"],
         "LR_demand_status": lr_service["stop_reason"],
@@ -53,12 +54,31 @@ def compare_instance(n_clients, facilities, clients, opening_cost, service_cost,
         "lr_linking": lr_opening,
     }
 
+def _to_csv(result, instance_name, filename="subgradient_results.csv"):
+    res = result["summary"]
 
-def save_summaries_csv(rows, filename="ufl_results.csv"):
-    if not rows:
-        return
+    df = pd.DataFrame({
+        "instance": [instance_name] * 4,
+        "n_clients": [res["n_clients"]] * 4,
+        "n_facilities": [res["n_facilities"]] * 4,
+        "method": ["PLI", "RC", "LR_demand", "LR_linking"],
+        "objective": [res["PLI_obj"], res["RC_obj"], res["LR_demand_LB"], res["LR_linking_LB"]],
+        "GAP_percent": ["-", res["RC_gap_percent"], res["LR_demand_gap_percent"], res["LR_linking_gap_percent"]],
+        "runtime": [res["PLI_time"], res["RC_time"], res["LR_demand_time"], res["LR_linking_time"]],
+        "status": [res["PLI_status"], res["RC_status"], res["LR_demand_status"], res["LR_linking_status"]],
+        "iter": ["-", "-", res["LR_demand_iter"], res["LR_linking_iter"]],
+    })
 
-    with open(filename, "w", newline="", encoding="utf-8") as file:
-        writer = csv.DictWriter(file, fieldnames=rows[0].keys())
-        writer.writeheader()
-        writer.writerows(rows)
+    path = Path(filename)
+    file_exists = path.exists() and path.stat().st_size > 0
+
+    df.to_csv(
+        path,
+        mode="a" if file_exists else "w",
+        header=not file_exists,
+        index=False,
+    )
+
+    print(f"Risultati aggiunti per l'istanza {instance_name}")
+
+    print(df)

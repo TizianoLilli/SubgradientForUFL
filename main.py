@@ -74,7 +74,7 @@ def main():
         time_limit = 120
 
     # accesso alla directory contenente le istanze del problema
-    directory_data = Path("data2")
+    directory_data = Path("data")
     files = sorted(fl for fl in directory_data.iterdir() if fl.is_file())
     tasks = [
         (instance_index, _read_instance(file), time_limit)

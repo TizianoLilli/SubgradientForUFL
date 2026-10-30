@@ -13,8 +13,8 @@ def compare_instance(n_clients, facilities, clients, opening_cost, service_cost,
     # upper bound ammissibile se disponibile
     ub = pli["objective"]
 
-    lr_service = solver.lagrangian_service(upper_bound=ub, time_limit=time_limit)
-    lr_opening = solver.lagrangian_opening(upper_bound=ub, time_limit=time_limit)
+    lr_demand = solver.lagrangian_demand(upper_bound=ub, time_limit=time_limit)
+    lr_consistency = solver.lagrangian_consistency(upper_bound=ub, time_limit=time_limit)
 
     summary = {
         "n_facilities": len(facilities),
@@ -25,20 +25,20 @@ def compare_instance(n_clients, facilities, clients, opening_cost, service_cost,
         "RC_obj": rc["objective"],
         "RC_status": rc["status"],
         "RC_time": rc["runtime"],
-        "LR_demand_LB": lr_service["best_lb"],
-        "LR_demand_status": lr_service["stop_reason"],
-        "LR_demand_time": lr_service["runtime"],
-        "LR_demand_iter": lr_service["iterations"],
-        "LR_linking_LB": lr_opening["best_lb"],
-        "LR_linking_status": lr_opening["stop_reason"],
-        "LR_linking_time": lr_opening["runtime"],
-        "LR_linking_iter": lr_opening["iterations"],
+        "LR_demand_LB": lr_demand["best_lb"],
+        "LR_demand_status": lr_demand["stop_reason"],
+        "LR_demand_time": lr_demand["runtime"],
+        "LR_demand_iter": lr_demand["iterations"],
+        "LR_consistency_LB": lr_consistency["best_lb"],
+        "LR_consistency_status": lr_consistency["stop_reason"],
+        "LR_consistency_time": lr_consistency["runtime"],
+        "LR_consistency_iter": lr_consistency["iterations"],
     }
 
     for name, lb in [
         ("RC", rc["objective"]),
-        ("LR_demand", lr_service["best_lb"]),
-        ("LR_linking", lr_opening["best_lb"]),
+        ("LR_demand", lr_demand["best_lb"]),
+        ("LR_consistency", lr_consistency["best_lb"]),
     ]:
         if ub is not None and lb is not None and abs(ub) > 1e-10:
             summary[name + "_gap_percent"] = (
@@ -51,8 +51,8 @@ def compare_instance(n_clients, facilities, clients, opening_cost, service_cost,
         "summary": summary,
         "pli": pli,
         "rc": rc,
-        "lr_demand": lr_service,
-        "lr_linking": lr_opening,
+        "lr_demand": lr_demand,
+        "lr_consistency": lr_consistency,
     }
 
 def _to_csv(result, instance_name, filename="subgradient_results.csv"):
@@ -62,12 +62,12 @@ def _to_csv(result, instance_name, filename="subgradient_results.csv"):
         "instance": [instance_name] * 4,
         "n_clients": [res["n_clients"]] * 4,
         "n_facilities": [res["n_facilities"]] * 4,
-        "method": ["PLI", "RC", "LR_demand", "LR_linking"],
-        "objective": [res["PLI_obj"], res["RC_obj"], res["LR_demand_LB"], res["LR_linking_LB"]],
-        "GAP_percent": ["-", res["RC_gap_percent"], res["LR_demand_gap_percent"], res["LR_linking_gap_percent"]],
-        "runtime": [res["PLI_time"], res["RC_time"], res["LR_demand_time"], res["LR_linking_time"]],
-        "status": [res["PLI_status"], res["RC_status"], res["LR_demand_status"], res["LR_linking_status"]],
-        "iter": ["-", "-", res["LR_demand_iter"], res["LR_linking_iter"]],
+        "method": ["PLI", "RC", "LR_demand", "LR_consistency"],
+        "objective": [res["PLI_obj"], res["RC_obj"], res["LR_demand_LB"], res["LR_consistency_LB"]],
+        "GAP_percent": ["-", res["RC_gap_percent"], res["LR_demand_gap_percent"], res["LR_consistency_gap_percent"]],
+        "runtime": [res["PLI_time"], res["RC_time"], res["LR_demand_time"], res["LR_consistency_time"]],
+        "status": [res["PLI_status"], res["RC_status"], res["LR_demand_status"], res["LR_consistency_status"]],
+        "iter": ["-", "-", res["LR_demand_iter"], res["LR_consistency_iter"]],
     })
 
     path = Path(filename)
@@ -87,7 +87,7 @@ def _to_csv(result, instance_name, filename="subgradient_results.csv"):
 def _to_plot():
     df = pd.read_csv("subgradient_results.csv")
 
-    methods = ["PLI", "RC", "LR_demand", "LR_linking"]
+    methods = ["PLI", "RC", "LR_demand", "LR_consistency"]
 
     # ordina le istanze prima per clienti, poi per facility
     df = df.sort_values(

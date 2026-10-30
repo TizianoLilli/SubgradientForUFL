@@ -68,8 +68,8 @@ class Solver:
 
     def _solve(self, model, x, y, start):
         # creazione dei vincoli
-        model.addConstrs((y.sum('*', c) == 1 for c in self.clients), name="service")
-        model.addConstrs((y.sum(f, '*') <= self.n_clients * x[f] for f in self.facilities), name="opening")
+        model.addConstrs((y.sum('*', c) == 1 for c in self.clients), name="demand")
+        model.addConstrs((y.sum(f, '*') <= self.n_clients * x[f] for f in self.facilities), name="consistency")
 
         # creazione della funzione obiettivo
         of = gp.quicksum(x[f] * self.opening_cost[f] for f in self.facilities)
@@ -111,7 +111,7 @@ class Solver:
 
         return alpha0 / (k + 1)
 
-    def lagrangian_opening(self, upper_bound=None, time_limit=300, alpha0=1.0, tol=1e-7):
+    def lagrangian_consistency(self, upper_bound=None, time_limit=300, alpha0=1.0, tol=1e-7):
         # rilassamento dei vincoli di coerenza: mu è maggiore o uguale di 0
         start = time.perf_counter()
 
@@ -207,7 +207,7 @@ class Solver:
             "stop_reason": stop_reason,
         }
 
-    def lagrangian_service(self, upper_bound=None, time_limit=300, alpha0=1.0, tol=1e-7):
+    def lagrangian_demand(self, upper_bound=None, time_limit=300, alpha0=1.0, tol=1e-7):
         # rilassamento dei vincoli di domanda; lambda è libero
         start = time.perf_counter()
 

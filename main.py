@@ -1,7 +1,7 @@
 import sys
 from pathlib import Path
 
-from compare import compare_instance, _to_csv
+from compare import compare_instance, _to_csv, _to_plot
 
 
 def main():
@@ -73,6 +73,8 @@ def main():
         _to_csv(result, instance_name = instance_index)
 
         instance_index += 1
+
+    _to_plot()
 
 if __name__ == '__main__':
     main()

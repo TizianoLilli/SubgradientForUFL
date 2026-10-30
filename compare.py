@@ -1,6 +1,7 @@
 from pathlib import Path
-
 import pandas as pd
+import matplotlib.pyplot as plt
+
 from solver import Solver
 
 def compare_instance(n_clients, facilities, clients, opening_cost, service_cost, time_limit=300):
@@ -82,3 +83,142 @@ def _to_csv(result, instance_name, filename="subgradient_results.csv"):
     print(f"Risultati aggiunti per l'istanza {instance_name}")
 
     print(df)
+
+def _to_plot():
+    df = pd.read_csv("subgradient_results.csv")
+
+    methods = ["PLI", "RC", "LR_demand", "LR_linking"]
+
+    # ordina le istanze prima per clienti, poi per facility
+    df = df.sort_values(
+        by=["n_clients", "n_facilities", "instance"]
+    )
+
+    # crea una tabella con una riga per istanza
+    instances = (
+        df[["instance", "n_clients", "n_facilities"]]
+        .drop_duplicates()
+        .reset_index(drop=True)
+    )
+
+    # etichette asse X: nome istanza e dimensioni
+    instances["label"] = instances.apply(
+        lambda row: (
+            f"{row['instance']}\n"
+            f"({row['n_clients']}C, {row['n_facilities']}F)"
+        ),
+        axis=1
+    )
+
+    # posizione numerica di ogni istanza
+    instances["x"] = range(len(instances))
+
+    # associa ogni risultato alla posizione della sua istanza
+    df = df.merge(
+        instances[["instance", "x"]],
+        on="instance",
+        how="left"
+    )
+
+    # directory in cui salvare i grafici
+    output_dir = Path("plots")
+    output_dir.mkdir(exist_ok=True)
+
+    # 1. GRAFICO VALORI OBIETTIVO
+    fig, ax = plt.subplots(figsize=(12, 6))
+
+    for method in methods:
+        data = df[df["method"] == method].sort_values("x")
+
+        ax.plot(
+            data["x"],
+            data["objective"],
+            marker="o",
+            label=method
+        )
+
+    ax.set_title("Objective values and lower bounds")
+    ax.set_xlabel("Instances")
+    ax.set_ylabel("Objective / Lower Bound")
+    ax.set_xticks(instances["x"])
+    ax.set_xticklabels(instances["label"], rotation=45, ha="right")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+
+    fig.tight_layout()
+    fig.savefig(output_dir / "objective.png", dpi=300)
+
+    # 2. GRAFICO GAP PERCENTUALI
+    fig, ax = plt.subplots(figsize=(12, 6))
+
+    for method in methods:
+        if method == "PLI":
+            continue
+
+        data = df[df["method"] == method].sort_values("x")
+
+        ax.plot(
+            data["x"],
+            data["GAP_percent"],
+            marker="o",
+            label=method
+        )
+
+    ax.set_title("Gap percentage")
+    ax.set_xlabel("Instances")
+    ax.set_ylabel("Gap (%)")
+    ax.set_xticks(instances["x"])
+    ax.set_xticklabels(instances["label"], rotation=45, ha="right")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+
+    fig.tight_layout()
+    fig.savefig(output_dir / "gap.png", dpi=300)
+
+    # 3. GRAFICO TEMPI DI ESECUZIONE
+    fig, ax = plt.subplots(figsize=(12, 6))
+
+    for method in methods:
+        data = df[df["method"] == method].sort_values("x")
+
+        ax.plot(
+            data["x"],
+            data["runtime"],
+            marker="o",
+            label=method
+        )
+
+    ax.set_title("Execution time")
+    ax.set_xlabel("Instances")
+    ax.set_ylabel("Time (seconds)")
+    ax.set_xticks(instances["x"])
+    ax.set_xticklabels(instances["label"], rotation=45, ha="right")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+
+    fig.tight_layout()
+    fig.savefig(output_dir / "runtime.png", dpi=300)
+
+    # 4. GRAFICO STATUS
+    status_counts = pd.crosstab(
+        df["method"],
+        df["status"]
+    ).reindex(methods, fill_value=0)
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+
+    status_counts.plot(
+        kind="bar",
+        stacked=True,
+        ax=ax
+    )
+
+    ax.set_title("Solver status distribution")
+    ax.set_xlabel("Method")
+    ax.set_ylabel("Number of instances")
+    ax.tick_params(axis="x", rotation=0)
+    ax.legend(title="Status")
+    ax.grid(axis="y", alpha=0.3)
+
+    fig.tight_layout()
+    fig.savefig(output_dir / "status.png", dpi=300)

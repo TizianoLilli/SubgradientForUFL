@@ -16,6 +16,8 @@ class Solver:
         model = gp.Model()
         model.Params.OutputFlag = 0
         model.Params.TimeLimit = time_limit
+        # evita che più processi paralleli usino troppi thread Gurobi.
+        model.Params.Threads = 1
 
         return model
 

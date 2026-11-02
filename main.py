@@ -1,4 +1,4 @@
-import sys
+import argparse
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
@@ -65,19 +65,44 @@ def _solve_instance(task):
     return instance_index, result
 
 
-def main():
+def _positive_int(value):
+    """Restituisce un intero positivo, altrimenti segnala l'errore."""
+    try:
+        value = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("deve essere un intero") from error
 
-    # se l'utente non specifica il tempo max di run per il programma, questo si arresta dopo 120 sec
-    if len(sys.argv) > 1:
-        time_limit = int(sys.argv[1])
-    else:
-        time_limit = 120
+    if value <= 0:
+        raise argparse.ArgumentTypeError("deve essere maggiore di zero")
+
+    return value
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Esegue il confronto sulle istanze UFL in parallelo."
+    )
+    parser.add_argument(
+        "time_limit",
+        nargs="?",
+        type=_positive_int,
+        default=120,
+        help="tempo massimo in secondi per ogni istanza (default: 120)",
+    )
+    parser.add_argument(
+        "workers",
+        nargs="?",
+        type=_positive_int,
+        default=2,
+        help="numero di processi paralleli (default: 2)",
+    )
+    args = parser.parse_args()
 
     # accesso alla directory contenente le istanze del problema
-    directory_data = Path("data")
+    directory_data = Path("data2")
     files = sorted(fl for fl in directory_data.iterdir() if fl.is_file())
     tasks = [
-        (instance_index, _read_instance(file), time_limit)
+        (instance_index, _read_instance(file), args.time_limit)
         for instance_index, file in enumerate(files, start=1)
     ]
 
@@ -87,7 +112,7 @@ def main():
 
     # Due processi sono un punto di partenza prudente; aumentare solo se il
     # computer dispone di core e memoria sufficienti.
-    max_workers = min(3, len(tasks))
+    max_workers = min(args.workers, len(tasks))
 
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
         results = list(executor.map(_solve_instance, tasks))
@@ -101,4 +126,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

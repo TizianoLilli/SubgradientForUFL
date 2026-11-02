@@ -103,13 +103,13 @@ class Solver:
         return result
 
     @staticmethod
-    def _step(q, norm2, upper_bound, k, alpha0):
+    def _step(q, norm2, upper_bound, k, alpha0, pi):
         # utilizzo uno stepsize di Polyak se è disponibile un upper bound
         if norm2 <= 1e-12:
             return 0.0
 
-        if upper_bound is not None and upper_bound > q:
-            return (upper_bound - q) / norm2
+        if upper_bound is not None:
+            return pi * max(0.0, upper_bound - q) / norm2
 
         return alpha0 / (k + 1)
 
@@ -119,6 +119,13 @@ class Solver:
 
         # inizializzazione di un dizionario con |n_facilities| elementi con valore 0.0
         mu = {f: 0.0 for f in self.facilities}
+
+        pi = 2.0
+        pi_min = 0.005
+
+        no_improvement = 0
+        max_no_improvement = 30
+
         best_lb = float("-inf")
         best_iter = 0
         stop_reason = None
@@ -156,9 +163,17 @@ class Solver:
             )
 
             # memorizzazione del miglior bound
-            if q > best_lb:
+            if q > best_lb + 1e-7:
                 best_lb = q
                 best_iter = k + 1
+                no_improvement = 0
+            else:
+                no_improvement += 1
+
+            # se non ottengo miglioramenti dopo un numero fissato di iterazioni, dimezzo pi
+            if no_improvement >= max_no_improvement:
+                pi /= 2.0
+                no_improvement = 0
 
             # calcolo del subgradiente
             subgrad = {
@@ -175,19 +190,23 @@ class Solver:
                 "subgradient_norm": norm2 ** 0.5,
             })
 
+            if pi <= pi_min:
+                stop_reason = "pi_limit"
+                break
+
+            # Lazy evaluation: se upper_bound è None non valuto neanche la seconda espressione
+            if upper_bound is not None and upper_bound - best_lb < 0.01:
+                stop_reason = "gap_closed"
+                break
+
             # corrisponde a vedere se norm2 == 0, ovvero non c'è una direzione d'aggiornamento
             if norm2 <= tol * tol:
                 stop_reason = "zero_subgradient"
                 break
 
             alpha = self._step(
-                q, norm2, upper_bound, k, alpha0
+                q, norm2, upper_bound, k, alpha0, pi
             )
-
-            # passo piccolo indica aggiornamenti trascurabili
-            if alpha <= tol:
-                stop_reason = "small_step"
-                break
 
             for f in self.facilities:
                 mu[f] = max(0.0, mu[f] + alpha * subgrad[f])
@@ -214,6 +233,13 @@ class Solver:
         start = time.perf_counter()
 
         lam = {j: 0.0 for j in self.clients}
+
+        pi = 2.0
+        pi_min = 0.005
+
+        no_improvement = 0
+        max_no_improvement = 30
+
         best_lb = float("-inf")
         best_iter = 0
         stop_reason = None
@@ -256,9 +282,17 @@ class Solver:
                 for f in self.facilities
             )
 
-            if q > best_lb:
+            if q > best_lb + 1e-7:
                 best_lb = q
                 best_iter = k + 1
+                no_improvement = 0
+            else:
+                no_improvement += 1
+
+            # se non ottengo miglioramenti dopo un numero fissato di iterazioni, dimezzo pi
+            if no_improvement >= max_no_improvement:
+                pi /= 2.0
+                no_improvement = 0
 
             # calcolo del subgradiente
             subgrad = {
@@ -275,19 +309,23 @@ class Solver:
                 "subgradient_norm": norm2 ** 0.5,
             })
 
+            if pi <= pi_min:
+                stop_reason = "pi_limit"
+                break
+
+            # Lazy evaluation: se upper_bound è None non valuto neanche la seconda espressione
+            if upper_bound is not None and upper_bound - best_lb < 0.01:
+                stop_reason = "gap_closed"
+                break
+
             # corrisponde a vedere se norm2 == 0, ovvero non c'è una direzione d'aggiornamento
             if norm2 <= tol * tol:
                 stop_reason = "zero_subgradient"
                 break
 
             alpha = self._step(
-                q, norm2, upper_bound, k, alpha0
+                q, norm2, upper_bound, k, alpha0, pi
             )
-
-            # passo piccolo indica aggiornamenti trascurabili
-            if alpha <= tol:
-                stop_reason = "small_step"
-                break
 
             for c in self.clients:
                 # non si fa il max tra questo valore e 0 perché lam è una variabile libera

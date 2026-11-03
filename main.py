@@ -86,8 +86,8 @@ def main():
         "time_limit",
         nargs="?",
         type=_positive_int,
-        default=120,
-        help="tempo massimo in secondi per ogni istanza (default: 120)",
+        default=300,
+        help="tempo massimo in secondi per ogni istanza (default: 300)",
     )
     parser.add_argument(
         "workers",
@@ -99,7 +99,7 @@ def main():
     args = parser.parse_args()
 
     # accesso alla directory contenente le istanze del problema
-    directory_data = Path("data2")
+    directory_data = Path("data")
     files = sorted(fl for fl in directory_data.iterdir() if fl.is_file())
     tasks = [
         (instance_index, _read_instance(file), args.time_limit)

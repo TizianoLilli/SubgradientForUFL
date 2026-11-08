@@ -121,10 +121,10 @@ class Solver:
         mu = {f: 0.0 for f in self.facilities}
 
         pi = 2.0
-        pi_min = 0.005
+        pi_min = 1.1
 
         no_improvement = 0
-        max_no_improvement = 30
+        max_no_improvement = 15
 
         best_lb = float("-inf")
         best_iter = 0
@@ -195,7 +195,7 @@ class Solver:
                 break
 
             # Lazy evaluation: se upper_bound è None non valuto neanche la seconda espressione
-            if upper_bound is not None and upper_bound - best_lb < 0.01:
+            if upper_bound is not None and max(0.0, upper_bound - best_lb)/ abs(upper_bound) <= 0.05:  # 5%:
                 stop_reason = "gap_closed"
                 break
 
@@ -235,10 +235,10 @@ class Solver:
         lam = {j: 0.0 for j in self.clients}
 
         pi = 2.0
-        pi_min = 0.005
+        pi_min = 1.1
 
         no_improvement = 0
-        max_no_improvement = 30
+        max_no_improvement = 15
 
         best_lb = float("-inf")
         best_iter = 0
@@ -314,7 +314,7 @@ class Solver:
                 break
 
             # Lazy evaluation: se upper_bound è None non valuto neanche la seconda espressione
-            if upper_bound is not None and upper_bound - best_lb < 0.01:
+            if upper_bound is not None and max(0.0, upper_bound - best_lb)/ abs(upper_bound) <= 0.05:  # 5%:
                 stop_reason = "gap_closed"
                 break
 

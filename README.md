@@ -1,6 +1,6 @@
 # SubgradientForUFL
 
-Programma Python per lo studio del problema di localizzazione non capacitated (UFL, *Uncapacitated Facility Location*) tramite il confronto tra una formulazione intera, il suo rilassamento continuo e due rilassamenti lagrangiani risolti con metodo del subgradiente.
+Programma Python per lo studio del problema di localizzazione non capacitato (UFL, *Uncapacitated Facility Location*) tramite il confronto tra una formulazione intera, il suo rilassamento continuo e due rilassamenti lagrangiani risolti con metodo del subgradiente.
 
 ## Funzionalità
 
@@ -92,17 +92,18 @@ Ogni file in `data/` deve avere il formato seguente:
 
 ```text
 n_facilities n_clients
-fixed_cost_1 capacity_1
-fixed_cost_2 capacity_2
+capacity_1 fixed_cost_1 
+capacity_2 fixed_cost_2 
 ...
-fixed_cost_n capacity_n
+capacity_n fixed_cost_n 
+demand_1 demand_2 ... demand_n_clients
 cost_1_1 cost_1_2 ... cost_1_n_clients
 cost_2_1 cost_2_2 ... cost_2_n_clients
 ...
 cost_n_facilities_1 ... cost_n_facilities_n_clients
 ```
 
-Il programma usa il primo valore di ogni riga delle facility come costo di apertura; il secondo valore viene letto ma non utilizzato, perché il problema implementato è non capacitated. Dopo le righe delle facility devono comparire `n_facilities * n_clients` costi di servizio, letti in ordine facility-cliente.
+Il programma usa il secondo valore di ogni riga come costo di apertura della facility; il primo valore viene letto ma non utilizzato, perché il problema implementato è non capacitated. Anche la domanda dei singoli clienti viene ignorata. Dopo le righe delle facility devono comparire `n_facilities x n_clients` costi di servizio, letti in ordine facility-cliente.
 
 ## Output e riesecuzioni
 
@@ -124,8 +125,6 @@ La directory `plots/` viene creata automaticamente se non esiste.
 - `LR_demand`: rilassamento lagrangiano dei vincoli che impongono che ogni cliente sia assegnato una volta.
 - `LR_consistency`: rilassamento lagrangiano dei vincoli che collegano l'apertura di una facility alle assegnazioni.
 
-Il gap è calcolato rispetto al valore della PLI come `(PLI - valore) / |PLI| * 100`. Per i rilassamenti lagrangiani il valore riportato è il miglior lower bound trovato; per il rilassamento continuo è il suo valore obiettivo.
-
 ## Struttura principale
 
 ```text
@@ -133,7 +132,7 @@ main.py                  ingresso CLI e parallelizzazione
 solver.py                modelli Gurobi e metodo del subgradiente
 compare.py               confronto, CSV e grafici
 data/                    istanze utilizzate dall'esecuzione
-data2/                   ulteriori istanze presenti nel repository, non lette da main.py
 plots/                   grafici generati
 subgradient_results.csv  risultati generati
+analyze_gap.py           riassunto dati del csv
 ```

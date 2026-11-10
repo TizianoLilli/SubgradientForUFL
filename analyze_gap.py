@@ -1,4 +1,4 @@
-"""Stampa le medie di GAP_percent per dimensione dell'istanza e metodo."""
+"""Stampa le medie di GAP_percent e di runtime per dimensione dell'istanza e metodo."""
 
 import argparse
 from pathlib import Path
@@ -8,7 +8,7 @@ import pandas as pd
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Calcola la media di GAP_percent dal CSV dei risultati."
+        description="Calcola la media di GAP_percent e runtime dal CSV dei risultati."
     )
     parser.add_argument(
         "csv_file",
